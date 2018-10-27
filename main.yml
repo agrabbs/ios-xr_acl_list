@@ -1,0 +1,49 @@
+#
+# Title:        NMNET ACL Update
+# Author:       Andrew Grabbs
+# Email:        andrew@andrewgrabbs.com
+#
+---
+- name: Update IOS-XR Acces-List
+  hosts: all
+  connection: local
+  gather_facts: no
+
+  vars:
+    allow: permit
+    host:
+    src_ip: any
+    src_mask:
+    dst_ip:
+    dst_mask:
+    acl: "TEST-LIST"
+    commit_label: 
+    commit_comment:
+    fail: "No such access-list {{acl}}"
+
+  tasks:
+  - name: "Registering {{acl}}"
+    iosxr_command:
+      commands: "show access-lists {{acl}}"
+    register: result
+
+  - name: "Filtering {{dst_ip}} in {{acl}}"
+    set_fact:
+      seq: "{{dst_ip|acl_seq_filter(result.stdout[0])}}"
+      cmd: "{{dst_ip|acl_seq_filter(result.stdout[0])}} {{allow}} ipv4 {{src_ip}} {{host}} {{dst_ip}} {{dst_mask}}"
+    when: (result.stdout[0] != fail)
+
+  - name: "Inserting {{ dst_ip }}"
+    iosxr_config:
+      parents:
+        - "ipv4 access-list {{acl}}"
+      lines:
+        - "{{ cmd }}"
+      label: "{{commit_label}}"
+      comment: "{{commit_comment}}"
+    when: (result.stdout[0] != fail and seq != "666")
+
+  - name: "Resequencing {{acl}}"
+    iosxr_command:
+      commands: "resequence access-list ipv4 {{acl}}"
+    when: (result.stdout[0] != fail and seq != "666")
